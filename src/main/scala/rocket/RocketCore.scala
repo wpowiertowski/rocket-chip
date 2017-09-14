@@ -882,7 +882,7 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
 //  val pc = Wire(SInt(width=xLen))
   val pc = Wire(Bits())
   pc := wb_reg_pc
-  val inst = wb_reg_inst
+  val inst = wb_reg_cinst
   val rd = RegNext(RegNext(RegNext(id_waddr)))
   val wfd = wb_ctrl.wfd
   val wxd = wb_ctrl.wxd
@@ -892,7 +892,10 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
   val inst_order = RegInit(UInt(0, width=64))
 
   inst_commit.pc_rdata := wb_reg_pc
-  inst_commit.pc_wdata := Reg(next=io.imem.req.bits.pc)
+  inst_commit.pc_wdata := Mux(wb_xcpt || csr.io.eret, csr.io.evec, 
+                          Reg(next=Mux(replay_wb, wb_reg_pc,
+                                                  mem_npc)))
+//Reg(next=io.imem.req.bits.pc)
   inst_commit.insn := wb_reg_inst
   inst_commit.order := UInt(0)
   inst_commit.intr := Reg(next=Reg(next=Reg(next=(csr.io.interrupt))))

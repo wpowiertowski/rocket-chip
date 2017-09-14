@@ -85,7 +85,7 @@ class DefaultConfigWithRVFIMonitors extends Config(
   new WithRVFIMonitors ++
   new WithoutMulDiv ++
   new WithoutFPU ++
-  new WithoutCompressed ++
+//  new WithoutCompressed ++
   new WithNMemoryChannels(0) ++
   new WithStatelessBridge ++
   new WithNTinyCores(1) ++
