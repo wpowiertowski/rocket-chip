@@ -15,11 +15,9 @@ import freechips.rocketchip.util._
 
 class BaseCoreplexConfig extends Config ((site, here, up) => {
   // Tile parameters
-  case PAddrBits => 32
   case PgLevels => if (site(XLen) == 64) 3 /* Sv39 */ else 2 /* Sv32 */
   case ASIdBits => 0
   case XLen => 64 // Applies to all cores
-  case ResetVectorBits => site(PAddrBits)
   case MaxHartIdBits => log2Up(site(RocketTilesKey).size)
   case BuildCore => (p: Parameters) => new Rocket()(p)
   case RocketTilesKey =>  Nil // Will be added by partial configs found below
@@ -36,9 +34,6 @@ class BaseCoreplexConfig extends Config ((site, here, up) => {
   case PLICParams => PLICParams()
   case ClintParams => ClintParams()
   case DTSTimebase => BigInt(1000000) // 1 MHz
-  // TileLink connection global parameters
-  case TLMonitorBuilder => (args: TLMonitorArgs) => Some(LazyModule(new TLMonitor(args)))
-  case TLCombinationalCheck => false
   case TLBusDelayProbability => 0.0
 })
 

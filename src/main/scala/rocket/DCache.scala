@@ -290,8 +290,9 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
   when (lrscCount > 0) { lrscCount := lrscCount - 1 }
   when ((s2_valid_masked && lrscCount > 0) || io.cpu.invalidate_lr) { lrscCount := 0 }
 
+  // don't perform data correction if it might clobber a recent store
+  val s2_correct = s2_data_error && !any_pstore_valid && !RegNext(any_pstore_valid) && Bool(usingDataScratchpad)
   // pending store buffer
-  val s2_correct = s2_data_error && !any_pstore_valid && Bool(usingDataScratchpad)
   val s2_valid_correct = s2_valid_hit_pre_data_ecc && s2_correct
   val pstore1_cmd = RegEnable(s1_req.cmd, s1_valid_not_nacked && s1_write)
   val pstore1_addr = RegEnable(s1_paddr, s1_valid_not_nacked && s1_write)
@@ -473,8 +474,10 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
   dataArb.io.in(1).bits.wordMask := ~UInt(0, rowBytes / wordBytes)
   dataArb.io.in(1).bits.eccMask := ~UInt(0, wordBytes / eccBytes)
   // tag updates on refill
+  // ignore backpressure from metaArb, which can only be caused by tag ECC
+  // errors on hit-under-miss.  failing to write the new tag will leave the
+  // line invalid, so we'll simply request the line again later.
   metaArb.io.in(3).valid := grantIsCached && d_done
-  assert(!metaArb.io.in(3).valid || metaArb.io.in(3).ready)
   metaArb.io.in(3).bits.write := true
   metaArb.io.in(3).bits.way_en := s2_victim_way
   metaArb.io.in(3).bits.addr := Cat(io.cpu.req.bits.addr >> untagBits, s2_req.addr(idxMSB, 0))

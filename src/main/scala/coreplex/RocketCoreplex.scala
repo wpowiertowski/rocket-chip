@@ -45,20 +45,20 @@ trait HasRocketTiles extends HasSystemBus
     val wrapper = crossing match {
       case SynchronousCrossing(params) => {
         val wrapper = LazyModule(new SyncRocketTile(tp, i)(pWithExtra))
-        sbus.fromSyncTiles(params, tp.externalBuffers, tp.name) :=* wrapper.masterNode
-        wrapper.slaveNode :*= pbus.bufferToSlaves
+        sbus.fromSyncTiles(params, tp.externalMasterBuffers, tp.name) :=* wrapper.masterNode
+        wrapper.slaveNode :*= pbus.toSyncSlaves(tp.name, tp.externalSlaveBuffers)
         wrapper
       }
       case AsynchronousCrossing(depth, sync) => {
         val wrapper = LazyModule(new AsyncRocketTile(tp, i)(pWithExtra))
-        sbus.fromAsyncTiles(depth, sync, tp.externalBuffers, tp.name) :=* wrapper.masterNode
-        wrapper.slaveNode :*= pbus.toAsyncSlaves(sync, tp.name)
+        sbus.fromAsyncTiles(depth, sync, tp.externalMasterBuffers, tp.name) :=* wrapper.masterNode
+        wrapper.slaveNode :*= pbus.toAsyncSlaves(sync, tp.name, tp.externalSlaveBuffers)
         wrapper
       }
       case RationalCrossing(direction) => {
         val wrapper = LazyModule(new RationalRocketTile(tp, i)(pWithExtra))
-        sbus.fromRationalTiles(direction, tp.externalBuffers, tp.name) :=* wrapper.masterNode
-        wrapper.slaveNode :*= pbus.toRationalSlaves(tp.name)
+        sbus.fromRationalTiles(direction, tp.externalMasterBuffers, tp.name) :=* wrapper.masterNode
+        wrapper.slaveNode :*= pbus.toRationalSlaves(tp.name, tp.externalSlaveBuffers)
         wrapper
       }
     }
@@ -101,14 +101,19 @@ trait HasRocketTilesModuleImp extends LazyMultiIOModuleImp
     with HasResetVectorWire
     with HasPeripheryDebugModuleImp {
   val outer: HasRocketTiles
-  val rocket_tile_inputs = Wire(Vec(outer.nRocketTiles, new ClockedRocketTileInputs))
+
+  // TODO make this less gross and/or support tiles with differently sized reset vectors
+  def resetVectorBits: Int = outer.paddrBits
+  val rocket_tile_inputs = Wire(Vec(outer.nRocketTiles, new ClockedRocketTileInputs()(p.alterPartial {
+    case SharedMemoryTLEdge => outer.sharedMemoryTLEdge
+  })))
 
   // Unconditionally wire up the non-diplomatic tile inputs
   outer.rocket_tiles.map(_.module).zip(rocket_tile_inputs).foreach { case(tile, wire) =>
     tile.clock := wire.clock
     tile.reset := wire.reset
     tile.io.hartid := wire.hartid
-    tile.io.resetVector := wire.resetVector
+    tile.io.reset_vector := wire.reset_vector
   }
 
   // Default values for tile inputs; may be overriden in other traits
@@ -116,7 +121,7 @@ trait HasRocketTilesModuleImp extends LazyMultiIOModuleImp
     wire.clock := clock
     wire.reset := reset
     wire.hartid := UInt(i)
-    wire.resetVector := global_reset_vector
+    wire.reset_vector := global_reset_vector
   }
 }
 
