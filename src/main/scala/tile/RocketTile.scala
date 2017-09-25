@@ -180,7 +180,7 @@ abstract class RocketTileWrapper(rtp: RocketTileParams, hartid: Int)(implicit p:
 
   def optionalMasterBuffer(in: TLOutwardNode): TLOutwardNode = {
     if (rtp.boundaryBuffers) {
-      val mbuf = LazyModule(new TLBuffer(BufferParams.none, BufferParams.flow, BufferParams.none, BufferParams.flow, BufferParams(1)))
+      val mbuf = LazyModule(new TLBuffer(BufferParams.none, BufferParams.flow, BufferParams.none, BufferParams.none, BufferParams(1)))
       mbuf.node :=* in
       mbuf.node
     } else {
