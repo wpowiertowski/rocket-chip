@@ -891,6 +891,17 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
 
   val inst_order = RegInit(UInt(0, width=64))
 
+  val xpt_encountered_nxt = Wire(Bool())
+  val xpt_encountered = Reg(init=false.B, next=xpt_encountered_nxt)
+  xpt_encountered_nxt := xpt_encountered
+  when(wb_valid) {
+    xpt_encountered_nxt := false.B
+  } .otherwise {
+    when (csr.io.interrupt) {
+      xpt_encountered_nxt := true.B
+    }
+  }
+
   inst_commit.pc_rdata := wb_reg_pc
   inst_commit.pc_wdata := Mux(wb_xcpt || csr.io.eret, csr.io.evec, 
                           Reg(next=Mux(replay_wb, wb_reg_pc,
@@ -898,7 +909,7 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
 //Reg(next=io.imem.req.bits.pc)
   inst_commit.insn := wb_reg_inst
   inst_commit.order := UInt(0)
-  inst_commit.intr := Reg(next=Reg(next=Reg(next=(csr.io.interrupt))))
+  inst_commit.intr := xpt_encountered || xpt_encountered_nxt
   inst_commit.trap := Reg(next=Reg(next=Reg(next=(id_illegal_insn))))
   inst_commit.halt := UInt(0)
   inst_commit.rs1_addr := Mux(Reg(next=Reg(next=ex_ctrl.rxs1)), wb_reg_inst(19,15), UInt(0))
@@ -974,9 +985,20 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
     store_commit.rd_wdata := rf_wdata
     store_commit.mem_rdata := io.dmem.resp.bits.data
     store_commit.mem_rmask := Fill(p(XLen)/8, dmem_resp_valid)
+  } .elsewhen (ll_wen /* implies && rf_waddr===UInt(0) */ ) {
+    store_commit := rd_store_commit(rf_waddr)
+    store_commit.rd_addr := rf_waddr
+    store_commit.rd_wdata := UInt(0)
+    store_commit.mem_rdata := io.dmem.resp.bits.data
+    store_commit.mem_rmask := Fill(p(XLen)/8, dmem_resp_valid)
   } .otherwise {
     store_commit := RVFIMonitor.invalid_RVFI_base(p(XLen))
   }
+
+// TODO
+// Add third channel to "retire" interrupted instructions (illegal
+//   instructions).  Wait until the next retired instruction, then
+//   on this channel, output the illegal instructions
 
   rvfi_mon.connect(Vec(Seq(inst_commit_filtered, store_commit)))
 }
