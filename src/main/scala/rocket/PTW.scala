@@ -24,7 +24,7 @@ class PTWResp(implicit p: Parameters) extends CoreBundle()(p) {
 }
 
 class TLBPTWIO(implicit p: Parameters) extends CoreBundle()(p)
-    with HasRocketCoreParameters {
+    with HasCoreParameters {
   val req = Decoupled(new PTWReq)
   val resp = Valid(new PTWResp).flip
   val ptbr = new PTBR().asInput
@@ -37,7 +37,7 @@ class PTWPerfEvents extends Bundle {
 }
 
 class DatapathPTWIO(implicit p: Parameters) extends CoreBundle()(p)
-    with HasRocketCoreParameters {
+    with HasCoreParameters {
   val ptbr = new PTBR().asInput
   val sfence = Valid(new SFenceReq).flip
   val status = new MStatus().asInput
@@ -283,7 +283,7 @@ trait CanHavePTW extends HasHellaCache {
 trait CanHavePTWModule extends HasHellaCacheModule {
   val outer: CanHavePTW
   val ptwPorts = ListBuffer(outer.dcache.module.io.ptw)
-  val ptw = Module(new PTW(outer.nPTWPorts)(outer.dcache.node.edgesOut(0), outer.p))
+  val ptw = Module(new PTW(outer.nPTWPorts)(outer.dcache.node.edges.out(0), outer.p))
   if (outer.usingPTW)
     dcachePorts += ptw.io.mem
 }

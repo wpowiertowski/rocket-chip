@@ -45,7 +45,7 @@ class WithNBigCores(n: Int) extends Config((site, here, up) => {
       icache = Some(ICacheParams(
         rowBits = site(SystemBusKey).beatBits,
         blockBytes = site(CacheBlockBytes))))
-    List.fill(n)(big) ++ up(RocketTilesKey, site)
+    List.tabulate(n)(i => big.copy(hartid = i))
   }
 })
 
@@ -67,7 +67,7 @@ class WithNSmallCores(n: Int) extends Config((site, here, up) => {
         nWays = 1,
         nTLBEntries = 4,
         blockBytes = site(CacheBlockBytes))))
-    List.fill(n)(small) ++ up(RocketTilesKey, site)
+    List.tabulate(n)(i => small.copy(hartid = i))
   }
 })
 
@@ -94,7 +94,7 @@ class WithNTinyCores(n: Int) extends Config((site, here, up) => {
           nWays = 1,
           nTLBEntries = 4,
           blockBytes = site(CacheBlockBytes))))
-    List.fill(n)(tiny) ++ up(RocketTilesKey, site)
+    List.tabulate(n)(i => tiny.copy(hartid = i))
   }
 })
 
@@ -151,10 +151,12 @@ class WithBufferlessBroadcastHub extends Config((site, here, up) => {
  * DO NOT use this configuration.
  */
 class WithStatelessBridge extends Config((site, here, up) => {
-  case BankedL2Key => up(BankedL2Key, site).copy(coherenceManager = { case (q, _) =>
-    implicit val p = q
+  case BankedL2Key => up(BankedL2Key, site).copy(coherenceManager = { coreplex =>
+    implicit val p = coreplex.p
     val cork = LazyModule(new TLCacheCork(unsafe = true))
-    (cork.node, cork.node)
+    val ww = LazyModule(new TLWidthWidget(coreplex.sbusBeatBytes))
+    ww.node :*= cork.node
+    (cork.node, ww.node, () => None)
   })
 })
 
@@ -185,14 +187,21 @@ class WithRoccExample extends Config((site, here, up) => {
       Seq(
         RoCCParams(
           opcodes = OpcodeSet.custom0,
-          generator = (p: Parameters) => LazyModule(new AccumulatorExample()(p))),
+          generator = (p: Parameters) => {
+            val accumulator = LazyModule(new AccumulatorExample()(p))
+            accumulator}),
         RoCCParams(
           opcodes = OpcodeSet.custom1,
-          generator = (p: Parameters) => LazyModule(new TranslatorExample()(p)),
+          generator = (p: Parameters) => {
+            val translator = LazyModule(new TranslatorExample()(p))
+            translator},
           nPTWPorts = 1),
         RoCCParams(
           opcodes = OpcodeSet.custom2,
-          generator = (p: Parameters) => LazyModule(new CharacterCountExample()(p)))
+          generator = (p: Parameters) => {
+            val counter = LazyModule(new CharacterCountExample()(p))
+            counter
+          })
         ))
     }
 })
@@ -263,7 +272,7 @@ class WithNBitPeripheryBus(nBits: Int) extends Config ((site, here, up) => {
 })
 
 class WithoutTLMonitors extends Config ((site, here, up) => {
-  case TLMonitorBuilder => (args: TLMonitorArgs) => None
+  case MonitorsEnabled => false
 })
 
 class WithNExtTopInterrupts(nExtInts: Int) extends Config((site, here, up) => {
