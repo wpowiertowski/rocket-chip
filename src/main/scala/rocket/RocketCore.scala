@@ -878,6 +878,7 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
 
   val rd_store_commit = Reg(init=Vec(Seq.fill(32)(RVFIMonitor.invalid_RVFI_base(p(XLen)))))
   val inst_commit = Wire(new RVFIMonitor.RVFI_Base(p(XLen))).suggestName("inst_commit")
+  val illegal_inst_commit = Wire(new RVFIMonitor.RVFI_Base(p(XLen))).suggestName("illegal_inst_commit")
 
 //  val pc = Wire(SInt(width=xLen))
   val pc = Wire(Bits())
@@ -907,7 +908,7 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
                           Reg(next=Mux(replay_wb, wb_reg_pc,
                                                   mem_npc)))
 //Reg(next=io.imem.req.bits.pc)
-  inst_commit.insn := wb_reg_inst
+  inst_commit.insn := wb_reg_cinst
   inst_commit.order := UInt(0)
   inst_commit.intr := xpt_encountered || xpt_encountered_nxt
   inst_commit.trap := Reg(next=Reg(next=Reg(next=(id_illegal_insn))))
