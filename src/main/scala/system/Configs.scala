@@ -6,32 +6,27 @@ package freechips.rocketchip.system
 import Chisel._
 import freechips.rocketchip.config.Config
 import freechips.rocketchip.coreplex._
-import freechips.rocketchip.devices.debug._
-import freechips.rocketchip.devices.tilelink._
+import freechips.rocketchip.devices.debug.{IncludeJtagDTM, JtagDTMKey}
 import freechips.rocketchip.diplomacy._
 
 class BaseConfig extends Config(new BaseCoreplexConfig().alter((site,here,up) => {
   // DTS descriptive parameters
   case DTSModel => "freechips,rocketchip-unknown"
   case DTSCompat => Nil
+  case DTSTimebase => BigInt(1000000) // 1 MHz
   // External port parameters
-  case IncludeJtagDTM => false
-  case JtagDTMKey => new JtagDTMKeyDefault()
   case NExtTopInterrupts => 2
   case ExtMem => MasterPortParams(
-                      base = 0x80000000L,
-                      size = 0x10000000L,
-                      beatBytes = site(MemoryBusParams).beatBytes,
+                      base = x"8000_0000",
+                      size = x"1000_0000",
+                      beatBytes = site(MemoryBusKey).beatBytes,
                       idBits = 4)
   case ExtBus => MasterPortParams(
-                      base = 0x60000000L,
-                      size = 0x20000000L,
-                      beatBytes = site(MemoryBusParams).beatBytes,
+                      base = x"6000_0000",
+                      size = x"2000_0000",
+                      beatBytes = site(MemoryBusKey).beatBytes,
                       idBits = 4)
   case ExtIn  => SlavePortParams(beatBytes = 8, idBits = 8, sourceBits = 4)
-  // Additional device Parameters
-  case ErrorParams => ErrorParams(Seq(AddressSet(0x3000, 0xfff)))
-  case BootROMParams => BootROMParams(contentFileName = "./bootrom/bootrom.img")
 }))
 
 class DefaultConfig extends Config(new WithNBigCores(1) ++ new BaseConfig)
@@ -68,54 +63,14 @@ class EightChannelConfig extends Config(new WithNMemoryChannels(8) ++ new BaseCo
 class DualCoreConfig extends Config(
   new WithNBigCores(2) ++ new BaseConfig)
 
-class HeterogeneousDualCoreConfig extends Config(
-  new WithNSmallCores(1) ++ new WithNBigCores(1) ++ new BaseConfig)
-
 class TinyConfig extends Config(
   new WithNMemoryChannels(0) ++
   new WithStatelessBridge ++
-  new WithNTinyCores(1) ++
+  new With1TinyCore ++
   new BaseConfig)
 
-class DefaultFPGAConfig extends Config(new BaseConfig)
 
-class DefaultFPGASmallConfig extends Config(new WithNSmallCores(1) ++ new DefaultFPGAConfig)
+class BaseFPGAConfig extends Config(new BaseConfig)
 
-class DefaultConfigWithRVFIMonitors extends Config(
-  new WithRVFIMonitors ++
-  new WithoutMulDiv ++
-  new WithoutFPU ++
-//  new WithoutCompressed ++
-  new WithNMemoryChannels(0) ++
-  new WithStatelessBridge ++
-  new WithNTinyCores(1) ++
-  new BaseConfig().alter((site, here, up) => {
-    case freechips.rocketchip.tile.XLen => 64
-  })
-//  new BaseConfig().alter((site, here, up) => {
-//    case XLen => 32
-//    case RocketTilesKey => Seq(
-//      RocketTileParams(
-//        core = RocketCoreParams(
-//          useVM = false,
-//          fpu = None,
-//          mulDiv = None,
-//          useAtomics = false,
-//          useCompressed = false),
-//        btb = None,
-//        dcache = Some(DCacheParams(
-//          rowBits = site(L1toL2Config).beatBytes*8,
-//          nSets = 256, // 16Kb scratchpad
-//          nWays = 1,
-//          nTLBEntries = 4,
-//          nMSHRs = 0,
-//          blockBytes = site(CacheBlockBytes),
-//          scratch = Some(0x80000000L))),
-//        icache = Some(ICacheParams(
-//          rowBits = site(L1toL2Config).beatBytes*8,
-//          nSets = 64,
-//          nWays = 1,
-//          nTLBEntries = 4,
-//          blockBytes = site(CacheBlockBytes)))))
-//  })
-)
+class DefaultFPGAConfig extends Config(new WithNSmallCores(1) ++ new BaseFPGAConfig)
+class DefaultFPGASmallConfig extends Config(new DefaultFPGAConfig)

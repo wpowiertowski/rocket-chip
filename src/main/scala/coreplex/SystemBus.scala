@@ -15,21 +15,18 @@ case class SystemBusParams(
   slaveBuffering: BufferParams = BufferParams.default
 ) extends TLBusParams
 
-case object SystemBusParams extends Field[SystemBusParams]
+case object SystemBusKey extends Field[SystemBusParams]
 
 class SystemBus(params: SystemBusParams)(implicit p: Parameters) extends TLBusWrapper(params, "SystemBus") {
 
   private val master_splitter = LazyModule(new TLSplitter)  // Allows cycle-free connection to external networks
   master_splitter.suggestName(s"${busName}_master_TLSplitter")
   inwardNode :=* master_splitter.node
-  def busView = master_splitter.node.edgesIn.head
+  def busView = master_splitter.node.edges.in.head
 
   protected def inwardSplitNode: TLInwardNode = master_splitter.node
   protected def outwardSplitNode: TLOutwardNode = master_splitter.node
 
-  private val tile_fixer = LazyModule(new TLFIFOFixer(TLFIFOFixer.allUncacheable))
-  tile_fixer.suggestName(s"${busName}_tile_TLFIFOFixer")
-  master_splitter.node :=* tile_fixer.node
 
   private val port_fixer = LazyModule(new TLFIFOFixer(TLFIFOFixer.all))
   port_fixer.suggestName(s"${busName}_port_TLFIFOFixer")
@@ -55,33 +52,33 @@ class SystemBus(params: SystemBusParams)(implicit p: Parameters) extends TLBusWr
 
   def fromFrontBus: TLInwardNode = master_splitter.node
 
-  def fromSyncTiles(params: BufferParams, addBuffers: Int = 0, name: Option[String] = None): TLInwardNode = {
-    val tile_buf = LazyModule(new TLBuffer(params))
-    name.foreach { n => tile_buf.suggestName(s"${busName}_${n}_TLBuffer") }
-    val (in, out) = bufferChain(addBuffers, name = name)
+  def fromSyncTiles(params: BufferParams, adapt: () => TLNodeChain, name: Option[String] = None): TLInwardNode = {
+    val adapters = adapt() // wanted to be called inside SystemBus scope
+    val tile_sink = LazyModule(new TLBuffer(params))
+    name.foreach { n => tile_sink.suggestName(s"${busName}_${n}_TLBuffer") }
 
-    tile_fixer.node :=* out
-    in :=* tile_buf.node
-    tile_buf.node
-  }
-
-  def fromRationalTiles(dir: RationalDirection, addBuffers: Int = 0, name: Option[String] = None): TLRationalInwardNode = {
-    val tile_sink = LazyModule(new TLRationalCrossingSink(direction = dir))
-    name.foreach { n => tile_sink.suggestName(s"${busName}_${n}_TLRationalCrossingSink") }
-    val (in, out) = bufferChain(addBuffers, name = name)
-
-    tile_fixer.node :=* out
-    in :=* tile_sink.node
+    adapters.in :=* tile_sink.node
+    master_splitter.node :=* adapters.out
     tile_sink.node
   }
 
-  def fromAsyncTiles(depth: Int, sync: Int, addBuffers: Int = 0, name: Option[String] = None): TLAsyncInwardNode = {
+  def fromRationalTiles(dir: RationalDirection, adapt: () => TLNodeChain, name: Option[String] = None): TLRationalInwardNode = {
+    val adapters = adapt() // wanted to be called inside SystemBus scope
+    val tile_sink = LazyModule(new TLRationalCrossingSink(direction = dir))
+    name.foreach { n => tile_sink.suggestName(s"${busName}_${n}_TLRationalCrossingSink") }
+
+    adapters.in :=* tile_sink.node
+    master_splitter.node :=* adapters.out
+    tile_sink.node
+  }
+
+  def fromAsyncTiles(depth: Int, sync: Int, adapt: () => TLNodeChain, name: Option[String] = None): TLAsyncInwardNode = {
+    val adapters = adapt() // wanted to be called inside SystemBus scope
     val tile_sink = LazyModule(new TLAsyncCrossingSink(depth, sync))
     name.foreach { n => tile_sink.suggestName(s"${busName}_${n}_TLAsyncCrossingSink") }
-    val (in, out) = bufferChain(addBuffers, name = name)
 
-    tile_fixer.node :=* out
-    in :=* tile_sink.node
+    adapters.in :=* tile_sink.node
+    master_splitter.node :=* adapters.out
     tile_sink.node
   }
 
@@ -119,11 +116,10 @@ class SystemBus(params: SystemBusParams)(implicit p: Parameters) extends TLBusWr
   * for use in traits that connect individual devices or external ports.
   */
 trait HasSystemBus extends HasInterruptBus {
-  private val sbusParams = p(SystemBusParams)
+  private val sbusParams = p(SystemBusKey)
   val sbusBeatBytes = sbusParams.beatBytes
 
-  val sbus = new SystemBus(sbusParams)
+  val sbus = LazyModule(new SystemBus(sbusParams))
 
   def sharedMemoryTLEdge: TLEdge = sbus.busView
-  def paddrBits: Int = sbus.busView.bundle.addressBits
 }

@@ -18,7 +18,7 @@ class ScratchpadSlavePort(address: AddressSet, coreDataBytes: Int, usingAtomics:
     Seq(TLManagerParameters(
       address            = List(address),
       resources          = device.reg("mem"),
-      regionType         = RegionType.UNCACHED,
+      regionType         = RegionType.UNCACHEABLE,
       executable         = true,
       supportsArithmetic = if (usingAtomics) TransferSizes(4, coreDataBytes) else TransferSizes.none,
       supportsLogical    = if (usingAtomics) TransferSizes(4, coreDataBytes) else TransferSizes.none,
@@ -30,13 +30,11 @@ class ScratchpadSlavePort(address: AddressSet, coreDataBytes: Int, usingAtomics:
     minLatency = 1)))
 
   lazy val module = new LazyModuleImp(this) {
-    val io = new Bundle {
-      val tl_in = node.bundleIn
+    val io = IO(new Bundle {
       val dmem = new HellaCacheIO
-    }
+    })
 
-    val tl_in = io.tl_in(0)
-    val edge = node.edgesIn(0)
+    val (tl_in, edge) = node.in(0)
 
     val s_ready :: s_wait :: s_replay :: s_grant :: Nil = Enum(UInt(), 4)
     val state = Reg(init = s_ready)
@@ -100,25 +98,36 @@ trait CanHaveScratchpad extends HasHellaCache with HasICacheFrontend {
   val module: CanHaveScratchpadModule
   val cacheBlockBytes = p(CacheBlockBytes)
 
-  val slaveNode = TLInputNode() // Up to two uses for this input node:
-
-  // 1) Frontend always exists, but may or may not have a scratchpad node
-  // 2) ScratchpadSlavePort always has a node, but only exists when the HellaCache has a scratchpad
-  val fg = LazyModule(new TLFragmenter(tileParams.core.fetchBytes, cacheBlockBytes, earlyAck=true))
-  val ww = LazyModule(new TLWidthWidget(xBytes))
   val scratch = tileParams.dcache.flatMap { d => d.scratch.map(s =>
     LazyModule(new ScratchpadSlavePort(AddressSet(s, d.dataScratchpadBytes-1), xBytes, tileParams.core.useAtomics)))
   }
 
+  val intOutputNode = tileParams.core.tileControlAddr.map(dummy => IntIdentityNode())
+  val busErrorUnit = tileParams.core.tileControlAddr map { a =>
+    val beu = LazyModule(new BusErrorUnit(new L1BusErrors, BusErrorUnitParams(a)))
+    intOutputNode.get := beu.intNode
+    beu
+  }
+
+  // connect any combination of ITIM, DTIM, and BusErrorUnit
+  val slaveNode = TLIdentityNode()
   DisableMonitors { implicit p =>
-    frontend.slaveNode :*= fg.node
-    fg.node :*= ww.node
-    ww.node :*= slaveNode
-    scratch foreach { lm => lm.node := TLFragmenter(xBytes, cacheBlockBytes, earlyAck=true)(slaveNode) }
+    val xbarPorts =
+      scratch.map(lm => (lm.node, xBytes)) ++
+      busErrorUnit.map(lm => (lm.node, xBytes)) ++
+      tileParams.icache.flatMap(icache => icache.itimAddr.map(a => (frontend.slaveNode, tileParams.core.fetchBytes)))
+
+    if (xbarPorts.nonEmpty) {
+      val xbar = LazyModule(new TLXbar)
+      xbar.node := TLFIFOFixer()(TLFragmenter(xBytes, cacheBlockBytes, earlyAck=true)(slaveNode))
+      xbarPorts.foreach { case (port, bytes) =>
+        port := (if (bytes == xBytes) xbar.node else TLFragmenter(bytes, xBytes, earlyAck=true)(TLWidthWidget(xBytes)(xbar.node)))
+      }
+    }
   }
 
   def findScratchpadFromICache: Option[AddressSet] = scratch.map { s =>
-    val finalNode = frontend.masterNode.edgesOut.head.manager.managers.find(_.nodePath.last == s.node)
+    val finalNode = frontend.masterNode.edges.out.head.manager.managers.find(_.nodePath.last == s.node)
     require (finalNode.isDefined, "Could not find the scratch pad; not reachable via icache?")
     require (finalNode.get.address.size == 1, "Scratchpad address space was fragmented!")
     finalNode.get.address(0)
@@ -129,7 +138,6 @@ trait CanHaveScratchpad extends HasHellaCache with HasICacheFrontend {
 
 trait CanHaveScratchpadBundle extends HasHellaCacheBundle with HasICacheFrontendBundle {
   val outer: CanHaveScratchpad
-  val slave = outer.slaveNode.bundleIn
 }
 
 trait CanHaveScratchpadModule extends HasHellaCacheModule with HasICacheFrontendModule {
@@ -137,4 +145,8 @@ trait CanHaveScratchpadModule extends HasHellaCacheModule with HasICacheFrontend
   val io: CanHaveScratchpadBundle
 
   outer.scratch.foreach { lm => dcachePorts += lm.module.io.dmem }
+  outer.busErrorUnit.foreach { lm =>
+    lm.module.io.errors.dcache := outer.dcache.module.io.errors
+    lm.module.io.errors.icache := outer.frontend.module.io.errors
+  }
 }

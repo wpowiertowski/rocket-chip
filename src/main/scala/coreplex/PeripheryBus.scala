@@ -19,7 +19,7 @@ case class PeripheryBusParams(
 ) extends TLBusParams {
 }
 
-case object PeripheryBusParams extends Field[PeripheryBusParams]
+case object PeripheryBusKey extends Field[PeripheryBusParams]
 
 class PeripheryBus(params: PeripheryBusParams)(implicit p: Parameters) extends TLBusWrapper(params, "PeripheryBus") {
 
@@ -29,6 +29,30 @@ class PeripheryBus(params: PeripheryBusParams)(implicit p: Parameters) extends T
 
   def toLargeBurstSlave(maxXferBytes: Int) = {
     TLFragmenter(params.beatBytes, maxXferBytes)(outwardBufNode)
+  }
+
+  def toSyncSlaves(adapt: () => TLNodeChain, name: Option[String]): TLOutwardNode = SinkCardinality { implicit p =>
+    val adapters = adapt()
+    adapters.in :=? outwardBufNode
+    adapters.out
+  }
+
+  def toAsyncSlaves(sync: Int, adapt: () => TLNodeChain, name: Option[String]): TLAsyncOutwardNode = SinkCardinality { implicit p =>
+    val adapters = adapt()
+    val source = LazyModule(new TLAsyncCrossingSource(sync))
+    name.foreach{ n => source.suggestName(s"${busName}_${n}_TLAsyncCrossingSource")}
+    adapters.in :=? outwardNode
+    source.node :=? adapters.out
+    source.node
+  }
+
+  def toRationalSlaves(adapt: () => TLNodeChain, name: Option[String]): TLRationalOutwardNode = SinkCardinality { implicit p =>
+    val adapters = adapt()
+    val source = LazyModule(new TLRationalCrossingSource())
+    name.foreach{ n => source.suggestName(s"${busName}_${n}_TLRationalCrossingSource")}
+    adapters.in :=? outwardNode
+    source.node :=? adapters.out
+    source.node
   }
 
   val fromSystemBus: TLInwardNode = {
@@ -42,10 +66,10 @@ class PeripheryBus(params: PeripheryBusParams)(implicit p: Parameters) extends T
   * for use in traits that connect individual devices or external ports.
   */
 trait HasPeripheryBus extends HasSystemBus {
-  private val pbusParams = p(PeripheryBusParams)
+  private val pbusParams = p(PeripheryBusKey)
   val pbusBeatBytes = pbusParams.beatBytes
 
-  val pbus = new PeripheryBus(pbusParams)
+  val pbus = LazyModule(new PeripheryBus(pbusParams))
 
   // The peripheryBus hangs off of systemBus; here we convert TL-UH -> TL-UL
   pbus.fromSystemBus := sbus.toPeripheryBus()

@@ -25,8 +25,16 @@ trait CoreParams {
   val retireWidth: Int
   val instBits: Int
   val nLocalInterrupts: Int
+  val nPMPs: Int
+  val nBreakpoints: Int
+  val nPerfCounters: Int
+  val haveBasicCounters: Boolean
+  val misaWritable: Boolean
   val nL2TLBEntries: Int
+  val mtvecInit: Option[BigInt]
+  val mtvecWritable: Boolean
   val jumpInFrontend: Boolean
+  val tileControlAddr: Option[BigInt]
 
   def instBytes: Int = instBits / 8
   def fetchBytes: Int = fetchWidth * instBytes
@@ -46,11 +54,18 @@ trait HasCoreParameters extends HasTileParameters {
   val fetchWidth = coreParams.fetchWidth
   val decodeWidth = coreParams.decodeWidth
 
+  val fetchBytes = coreParams.fetchBytes
   val coreInstBits = coreParams.instBits
   val coreInstBytes = coreInstBits/8
   val coreDataBits = xLen max fLen
   val coreDataBytes = coreDataBits/8
   val coreMaxAddrBits = paddrBits max vaddrBitsExtended
+
+  val nBreakpoints = coreParams.nBreakpoints
+  val nPMPs = coreParams.nPMPs
+  val nPerfCounters = coreParams.nPerfCounters
+  val mtvecInit = coreParams.mtvecInit
+  val mtvecWritable = coreParams.mtvecWritable
 
   val coreDCacheReqTagBits = 6
   val dcacheReqTagBits = coreDCacheReqTagBits + log2Ceil(dcacheArbPorts)
@@ -75,5 +90,6 @@ trait HasCoreIO extends HasTileParameters {
     val ptw = new DatapathPTWIO().flip
     val fpu = new FPUCoreIO().flip
     val rocc = new RoCCCoreIO().flip
+    val trace = Vec(coreParams.retireWidth, new TracedInstruction).asOutput
   }
 }

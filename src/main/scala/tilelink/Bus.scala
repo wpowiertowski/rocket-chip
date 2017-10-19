@@ -6,7 +6,7 @@ import Chisel._
 import freechips.rocketchip.config.{Field, Parameters}
 import freechips.rocketchip.diplomacy._
 
-case object TLBusDelayProbability extends Field[Double]
+case object TLBusDelayProbability extends Field[Double](0.0)
 
 /** Specifies widths of various attachement points in the SoC */
 trait TLBusParams {
@@ -21,7 +21,8 @@ trait TLBusParams {
   def blockOffset: Int = log2Up(blockBytes)
 }
 
-abstract class TLBusWrapper(params: TLBusParams, val busName: String)(implicit p: Parameters) extends TLBusParams {
+abstract class TLBusWrapper(params: TLBusParams, val busName: String)(implicit p: Parameters)
+    extends SimpleLazyModule with LazyScope with TLBusParams {
 
   val beatBytes = params.beatBytes
   val blockBytes = params.blockBytes
@@ -71,7 +72,7 @@ abstract class TLBusWrapper(params: TLBusParams, val busName: String)(implicit p
     SourceCardinality { implicit p =>
       val chain = LazyModule(new TLBufferChain(depth))
       name.foreach { n => chain.suggestName(s"${busName}_${n}_TLBufferChain")}
-      (chain.nodeIn, chain.nodeOut)
+      (chain.node, chain.node)
     }
   }
 

@@ -65,6 +65,8 @@ case class TraceGenParams(
     memStart: BigInt, //p(ExtMem).base
     numGens: Int) extends GroundTestTileParams {
   def build(i: Int, p: Parameters): GroundTestTile = new TraceGenTile(i, this)(p)
+  val hartid = 0
+  val trace = false
 }
 
 trait HasTraceGenParams {
