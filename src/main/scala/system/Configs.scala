@@ -74,3 +74,16 @@ class BaseFPGAConfig extends Config(new BaseConfig)
 
 class DefaultFPGAConfig extends Config(new WithNSmallCores(1) ++ new BaseFPGAConfig)
 class DefaultFPGASmallConfig extends Config(new DefaultFPGAConfig)
+
+class DefaultConfigWithRVFIMonitors extends Config(
+  new WithRVFIMonitors ++
+  new WithoutMulDiv ++
+  new WithoutFPU ++
+//  new WithoutCompressed ++
+  new WithNMemoryChannels(0) ++
+  new WithStatelessBridge ++
+  new With1TinyCore ++
+  new BaseConfig().alter((site, here, up) => {
+    case freechips.rocketchip.tile.XLen => 64
+  })
+)

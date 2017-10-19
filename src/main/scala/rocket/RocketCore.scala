@@ -874,15 +874,11 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
   val inst_commit = Wire(new RVFIMonitor.RVFI_Base(p(XLen))).suggestName("inst_commit")
   val illegal_inst_commit = Wire(new RVFIMonitor.RVFI_Base(p(XLen))).suggestName("illegal_inst_commit")
 
-//  val pc = Wire(SInt(width=xLen))
-  val pc = Wire(Bits())
-  pc := wb_reg_pc
-  val inst = wb_reg_cinst
+  val t = csr.io.trace(0)
   val rd = RegNext(RegNext(RegNext(id_waddr)))
   val wfd = wb_ctrl.wfd
   val wxd = wb_ctrl.wxd
   val has_data = wb_wen && !wb_set_sboard
-  val priv = csr.io.status.prv
 
   val inst_order = RegInit(UInt(0, width=64))
 
@@ -901,10 +897,9 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
   inst_commit.pc_wdata := Mux(wb_xcpt || csr.io.eret, csr.io.evec, 
                           Reg(next=Mux(replay_wb, wb_reg_pc,
                                                   mem_npc)))
-//Reg(next=io.imem.req.bits.pc)
-  inst_commit.insn := wb_reg_cinst
+  inst_commit.insn := t.insn
   inst_commit.order := UInt(0)
-  inst_commit.intr := xpt_encountered || xpt_encountered_nxt
+  inst_commit.intr := t.exception
   inst_commit.trap := Reg(next=Reg(next=Reg(next=(id_illegal_insn))))
   inst_commit.halt := UInt(0)
   inst_commit.rs1_addr := Mux(Reg(next=Reg(next=ex_ctrl.rxs1)), wb_reg_inst(19,15), UInt(0))
