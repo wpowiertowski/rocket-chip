@@ -79,11 +79,11 @@ class DefaultConfigWithRVFIMonitors extends Config(
   new WithRVFIMonitors ++
   new WithoutMulDiv ++
   new WithoutFPU ++
-//  new WithoutCompressed ++
   new WithNMemoryChannels(0) ++
   new WithStatelessBridge ++
-  new With1TinyCore ++
-  new BaseConfig().alter((site, here, up) => {
+//  new With1TinyCore ++
+  new WithNBigCores(1) ++
+  new BaseConfig() /*.alter((site, here, up) => {
     case freechips.rocketchip.tile.XLen => 64
-  })
+  }) */
 )
