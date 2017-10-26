@@ -885,7 +885,7 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
   val xpt_encountered_nxt = Wire(Bool())
   val xpt_encountered = Reg(init=false.B, next=xpt_encountered_nxt)
   xpt_encountered_nxt := xpt_encountered
-  when(wb_valid) {
+  when(t.valid) {
     xpt_encountered_nxt := false.B
   } .otherwise {
     when (csr.io.interrupt) {
@@ -933,7 +933,7 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
 //  inst_commit.mem_wmask := Fill(p(XLen)/8, Reg(next=Reg(next=io.dmem.req.valid)) && !Reg(next=io.dmem.s1_kill) && !io.dmem.s2_nack && Reg(next=Reg(next=isWrite(io.dmem.req.bits.cmd))))  // TODO Partial store bits (M_PWR)
 
   inst_commit.valid := Bool(false)
-  when (wb_valid) {
+  when (t.valid) {
     inst_order := inst_order + UInt(1)
     inst_commit.valid := Bool(true)
     inst_commit.order := inst_order
@@ -968,6 +968,10 @@ class RocketWithRVFI(implicit p: Parameters) extends Rocket()(p) {
 //      rd_store_reg := inst_commit
 //    }
 //  }})
+
+// TODO ll_wen will actually get activate twice if cache miss
+//   so will have to disable first activation if scoreboard
+//   is in "hold" state (have to figure out what "hold" state is
 
   when (ll_wen && rf_waddr =/= UInt(0)) {
     store_commit := rd_store_commit(rf_waddr)
