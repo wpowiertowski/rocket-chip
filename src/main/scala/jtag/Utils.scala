@@ -4,6 +4,7 @@ package freechips.rocketchip.jtag
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.withClock
 
 /** Bundle representing a tristate pin.
   */
@@ -18,11 +19,8 @@ object NegativeEdgeLatch {
   def apply[T <: Data](clock: Clock, next: T, enable: Bool=true.B, name: Option[String] = None): T = {
     // TODO pass in initial value as well
     withClock((!clock.asUInt).asClock) {
-      val reg = Reg(dataType)
+      val reg = RegEnable(next = next, enable = enable)
       name.foreach{reg.suggestName(_)}
-      when (enable) {
-        reg := next
-      }
       reg
     }
   }
