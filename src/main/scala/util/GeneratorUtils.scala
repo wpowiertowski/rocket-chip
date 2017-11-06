@@ -95,10 +95,10 @@ trait GeneratorApp extends App with HasGeneratorUtilities {
   }
 
   // Canonical ways of building various JVM elaboration-time structures
-  lazy val td = names.targetDir
-  lazy val config = getConfig(names)
-  lazy val params = config.toInstance
-  lazy val circuit = elaborate(names, params)
+  lazy val td: String = names.targetDir
+  lazy val config: Config = getConfig(names)
+  lazy val params: Parameters = config.toInstance
+  lazy val circuit: Circuit = elaborate(names, params)
 
   val longName: String // Exhaustive name used to interface with external build tool targets
 
