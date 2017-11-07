@@ -294,6 +294,7 @@ class TLRAMFragmenter(ramBeatBytes: Int, maxSize: Int, txns: Int)(implicit p: Pa
   val fuzz = LazyModule(new TLFuzzer(txns))
   val model = LazyModule(new TLRAMModel("Fragmenter"))
   val ram  = LazyModule(new TLRAM(AddressSet(0x0, 0x3ff), beatBytes = ramBeatBytes))
+  val dut = LazyModule(new TLFragmenter(ramBeatBytes, maxSize/2))
 
   (ram.node
     := TLDelayer(0.1)
@@ -302,11 +303,18 @@ class TLRAMFragmenter(ramBeatBytes: Int, maxSize: Int, txns: Int)(implicit p: Pa
     := TLFragmenter(ramBeatBytes, maxSize, earlyAck = true)
     := TLDelayer(0.1)
     := TLBuffer(BufferParams.flow)
-    := TLFragmenter(ramBeatBytes, maxSize/2)
+    := dut.node
     := TLDelayer(0.1)
     := TLBuffer(BufferParams.flow)
     := model.node
     := fuzz.node)
+
+  val dup = CloneLazyModule(dut)
+  val node = dup.clone(dut.node)
+
+  val fuzz2 = LazyModule(new TLFuzzer(txns))
+  val ram2 = LazyModule(new TLRAM(AddressSet(0x0, 0x3ff), beatBytes = ramBeatBytes))
+  ram2.node := TLFragmenter(ramBeatBytes, maxSize, earlyAck = true) := node := fuzz2.node
 
   lazy val module = new LazyModuleImp(this) with UnitTestModule {
     io.finished := fuzz.module.io.finished
