@@ -3,7 +3,6 @@
 package freechips.rocketchip.tilelink
 
 import Chisel._
-import chisel3.internal.sourceinfo.SourceInfo
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
@@ -15,7 +14,7 @@ case class TLToAXI4Node(stripBits: Int = 0)(implicit valName: ValName) extends M
     p.clients.foreach { c =>
       require (c.sourceId.start % (1 << stripBits) == 0 &&
                c.sourceId.end   % (1 << stripBits) == 0,
-               "Cannot strip bits of aligned client ${c.name}: ${c.sourceId}")
+               s"Cannot strip bits of aligned client ${c.name}: ${c.sourceId}")
     }
     val clients = p.clients.sortWith(TLToAXI4.sortByType _)
     val idSize = clients.map { c => if (c.requestFifo) 1 else (c.sourceId.size >> stripBits) }
@@ -177,7 +176,10 @@ class TLToAXI4(val combinational: Boolean = true, val adapterName: Option[String
       val r_error = out.r.bits.resp =/= AXI4Parameters.RESP_OKAY
       val b_error = out.b.bits.resp =/= AXI4Parameters.RESP_OKAY
 
-      val r_d = edgeIn.AccessAck(r_source, r_size, UInt(0), r_error)
+      val reg_error = RegInit(Bool(false))
+      when (out.r.fire()) { reg_error := !out.r.bits.last && (reg_error || r_error) }
+
+      val r_d = edgeIn.AccessAck(r_source, r_size, UInt(0), reg_error || r_error)
       val b_d = edgeIn.AccessAck(b_source, b_size, b_error)
 
       in.d.bits := Mux(r_wins, r_d, b_d)
@@ -215,12 +217,8 @@ class TLToAXI4(val combinational: Boolean = true, val adapterName: Option[String
 
 object TLToAXI4
 {
-  // applied to the TL source node; y.node := TLToAXI4()(x.node)
-  def apply(combinational: Boolean = true, adapterName: Option[String] = None, stripBits: Int = 0)(x: TLOutwardNode)(implicit p: Parameters, sourceInfo: SourceInfo): AXI4OutwardNode = {
-    val axi4 = LazyModule(new TLToAXI4(combinational, adapterName, stripBits))
-    axi4.node :=? x
-    axi4.node
-  }
+  def apply(combinational: Boolean = true, adapterName: Option[String] = None, stripBits: Int = 0)(implicit p: Parameters) =
+    LazyModule(new TLToAXI4(combinational, adapterName, stripBits)).node
 
   def sortByType(a: TLClientParameters, b: TLClientParameters): Boolean = {
     if ( a.supportsProbe && !b.supportsProbe) return false

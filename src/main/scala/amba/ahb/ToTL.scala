@@ -3,7 +3,6 @@
 package freechips.rocketchip.amba.ahb
 
 import Chisel._
-import chisel3.internal.sourceinfo.SourceInfo
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
@@ -107,7 +106,14 @@ class AHBToTL()(implicit p: Parameters) extends LazyModule
       out.a.bits.mask    := MaskGen(d_addr, d_size, beatBytes)
 
       out.d.ready  := d_recv // backpressure AccessAckData arriving faster than AHB beats
-      in.hrdata    := out.d.bits.data
+
+      // NOTE: on error, we present the read result on the hreadyout LOW cycle
+      // This means that if you latch hrdata from an error, the result is garbage.
+      // To fix this would require a bus-wide register, and the AHB spec says this:
+      // "A slave only has to provide valid data when a transfer completes with an OKAY
+      //  response. ERROR responses do not require valid read data."
+      // Therefore, we choose to accept this slight TL-AHB infidelity.
+      in.hrdata := out.d.bits.data
 
       // In a perfect world, we'd use these signals
       val hresp = d_error || (out.d.valid && out.d.bits.error)
@@ -132,9 +138,5 @@ class AHBToTL()(implicit p: Parameters) extends LazyModule
 
 object AHBToTL
 {
-  def apply()(x: AHBOutwardNode)(implicit p: Parameters, sourceInfo: SourceInfo): TLOutwardNode = {
-    val tl = LazyModule(new AHBToTL)
-    tl.node :=? x
-    tl.node
-  }
+  def apply()(implicit p: Parameters) = LazyModule(new AHBToTL).node
 }
