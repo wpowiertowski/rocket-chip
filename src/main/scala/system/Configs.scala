@@ -79,7 +79,6 @@ class DefaultConfigWithRVFIMonitors extends Config(
   new WithoutMulDiv ++
   new WithoutFPU ++
   new WithNMemoryChannels(0) ++
-  new WithStatelessBridge ++
   new With1TinyCore ++
 //  new WithNSmallCores(1) ++
   new BaseConfig()).alter((site, here, up) => {
