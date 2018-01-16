@@ -5,11 +5,8 @@ package freechips.rocketchip.coreplex
 import Chisel._
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._
-import freechips.rocketchip.interrupts._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.devices.tilelink._
-import freechips.rocketchip.tile.{BaseTile, TileParams, SharedMemoryTLEdge, HasExternallyDrivenTileConstants}
-import freechips.rocketchip.devices.debug.{HasPeripheryDebug, HasPeripheryDebugModuleImp}
 import freechips.rocketchip.util._
 
 /** BareCoreplex is the root class for creating a coreplex sub-system */
@@ -27,25 +24,6 @@ abstract class BareCoreplexModule[+L <: BareCoreplex](_outer: L) extends LazyMod
   println(outer.dts)
 }
 
-trait HasTiles extends HasSystemBus {
-  protected def tileParams: Seq[TileParams]
-  def nRocketTiles = tileParams.size
-  def hartIdList = tileParams.map(_.hartid)
-
-  // Handle interrupts to be routed directly into each tile
-  // TODO: figure out how to merge the localIntNodes and coreIntXbar
-  def localIntCounts = tileParams.map(_.core.nLocalInterrupts)
-  lazy val localIntNodes = tileParams.zipWithIndex map { case (t, i) => {
-    (t.core.nLocalInterrupts > 0).option({
-      val n = LazyModule(new IntXbar)
-      n.suggestName(s"localIntXbar_${i}")
-      n.intnode})
-  }
-  }
-
-  val tiles: Seq[BaseTile]
-}
-
 /** Base Coreplex class with no peripheral devices or ports added */
 abstract class BaseCoreplex(implicit p: Parameters) extends BareCoreplex
     with HasInterruptBus
@@ -54,46 +32,22 @@ abstract class BaseCoreplex(implicit p: Parameters) extends BareCoreplex
     with HasMemoryBus {
   override val module: BaseCoreplexModule[BaseCoreplex]
 
-  val root = new Device {
-    def describe(resources: ResourceBindings): Description = {
-      val width = resources("width").map(_.value)
-      Description("/", Map(
-        "#address-cells" -> width,
-        "#size-cells"    -> width,
-        "model"          -> Seq(ResourceString(p(DTSModel))),
-        "compatible"     -> (p(DTSModel) +: p(DTSCompat)).map(s => ResourceString(s + "-dev"))))
-    }
-  }
-
-  val soc = new Device {
-    def describe(resources: ResourceBindings): Description = {
-      val width = resources("width").map(_.value)
-      Description("soc", Map(
-        "#address-cells" -> width,
-        "#size-cells"    -> width,
-        "compatible"     -> ((p(DTSModel) +: p(DTSCompat)).map(s => ResourceString(s + "-soc")) :+ ResourceString("simple-bus")),
-        "ranges"         -> Nil))
-    }
-  }
-
-  val cpus = new Device {
-    def describe(resources: ResourceBindings): Description = {
-      Description("cpus", Map(
-        "#address-cells"     -> Seq(ResourceInt(1)),
-        "#size-cells"        -> Seq(ResourceInt(0)),
-        "timebase-frequency" -> Seq(ResourceInt(p(DTSTimebase)))))
-    }
-  }
-
   // Make topManagers an Option[] so as to avoid LM name reflection evaluating it...
   lazy val topManagers = Some(ManagerUnification(sharedMemoryTLEdge.manager.managers))
   ResourceBinding {
     val managers = topManagers.get
     val max = managers.flatMap(_.address).map(_.max).max
     val width = ResourceInt((log2Ceil(max)+31) / 32)
-    Resource(root, "width").bind(width)
-    Resource(soc,  "width").bind(width)
-    Resource(cpus, "null").bind(ResourceString(""))
+    val model = p(DTSModel)
+    val compat = p(DTSCompat)
+    val devCompat = (model +: compat).map(s => ResourceString(s + "-dev"))
+    val socCompat = (model +: compat).map(s => ResourceString(s + "-soc"))
+    devCompat.foreach { Resource(ResourceAnchors.root, "compat").bind(_) }
+    socCompat.foreach { Resource(ResourceAnchors.soc,  "compat").bind(_) }
+    Resource(ResourceAnchors.root, "model").bind(ResourceString(model))
+    Resource(ResourceAnchors.root, "width").bind(width)
+    Resource(ResourceAnchors.soc,  "width").bind(width)
+    Resource(ResourceAnchors.cpus, "width").bind(ResourceInt(1))
 
     managers.foreach { case manager =>
       val value = manager.toResource
@@ -101,46 +55,6 @@ abstract class BaseCoreplex(implicit p: Parameters) extends BareCoreplex
         resource.bind(value)
       }
     }
-  }
-}
-
-class ClockedTileInputs(implicit val p: Parameters) extends ParameterizedBundle
-    with HasExternallyDrivenTileConstants
-    with Clocked
-
-trait HasTilesBundle {
-  val tile_inputs: Vec[ClockedTileInputs]
-}
-
-trait HasTilesModuleImp extends LazyModuleImp
-    with HasTilesBundle
-    with HasResetVectorWire {
-  val outer: HasTiles
-
-  def resetVectorBits: Int = {
-    // Consider using the minimum over all widths, rather than enforcing homogeneity
-    val vectors = outer.tiles.map(_.module.io.reset_vector)
-    require(vectors.tail.forall(_.getWidth == vectors.head.getWidth))
-    vectors.head.getWidth
-  }
-  val tile_inputs = Wire(Vec(outer.nRocketTiles, new ClockedTileInputs()(p.alterPartial {
-    case SharedMemoryTLEdge => outer.sharedMemoryTLEdge
-  })))
-
-  // Unconditionally wire up the non-diplomatic tile inputs
-  outer.tiles.map(_.module).zip(tile_inputs).foreach { case(tile, wire) =>
-    tile.clock := wire.clock
-    tile.reset := wire.reset
-    tile.io.hartid := wire.hartid
-    tile.io.reset_vector := wire.reset_vector
-  }
-
-  // Default values for tile inputs; may be overriden in other traits
-  tile_inputs.zip(outer.hartIdList).foreach { case(wire, i) =>
-    wire.clock := clock
-    wire.reset := reset
-    wire.hartid := UInt(i)
-    wire.reset_vector := global_reset_vector
   }
 }
 

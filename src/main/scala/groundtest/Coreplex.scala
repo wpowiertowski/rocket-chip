@@ -6,6 +6,7 @@ import Chisel._
 
 import freechips.rocketchip.config.{Field, Parameters}
 import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.interrupts._
 import freechips.rocketchip.coreplex._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.tile._
@@ -16,7 +17,8 @@ case object TileId extends Field[Int]
 
 class GroundTestCoreplex(implicit p: Parameters) extends BaseCoreplex
     with HasMasterAXI4MemPort
-    with HasPeripheryTestRAMSlave {
+    with HasPeripheryTestRAMSlave
+    with HasInterruptBus {
   val tileParams = p(GroundTestTilesKey)
   val tiles = tileParams.zipWithIndex.map { case(c, i) => LazyModule(
     c.build(i, p.alterPartial {
@@ -29,6 +31,9 @@ class GroundTestCoreplex(implicit p: Parameters) extends BaseCoreplex
     sbus.fromTile(None) { implicit p => TileMasterPortParams(addBuffers = 1).adapt(this)(dc.node) }
   }
 
+  // No PLIC in ground test; so just sink the interrupts to nowhere
+  IntSinkNode(IntSinkPortSimple()) := ibus.toPLIC
+
   val pbusRAM = LazyModule(new TLRAM(AddressSet(testRamAddr, 0xffff), true, false, pbus.beatBytes))
   pbusRAM.node := pbus.toVariableWidthSlaves
 
@@ -39,9 +44,9 @@ class GroundTestCoreplexModule[+L <: GroundTestCoreplex](_outer: L) extends Base
     with HasMasterAXI4MemPortModuleImp {
   val success = IO(Bool(OUTPUT))
 
-  outer.tiles.zipWithIndex.map { case(t, i) => t.module.io.hartid := UInt(i) }
+  outer.tiles.zipWithIndex.map { case(t, i) => t.module.constants.hartid := UInt(i) }
 
-  val status = DebugCombiner(outer.tiles.map(_.module.io.status))
+  val status = DebugCombiner(outer.tiles.map(_.module.status))
   success := status.finished
 }
 
